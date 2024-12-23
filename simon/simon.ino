@@ -1,12 +1,4 @@
-// Project downloaded from https://goodarduinocode.com/projects/simon
-
-/**
-   Simon Game for Arduino
-
-   Copyright (C) 2016, Uri Shaked
-
-   Released under the MIT License.
-*/
+// Simon game code downloaded from https://goodarduinocode.com/projects/simon
 
 #include "pitches.h"
 #include <FastLED.h>
@@ -15,15 +7,16 @@
 #define NUM_LEDS    4    // LED 的数量
 
 #define LED_PIN_LEG       33
-#define LED_COUNT_LEG 40
-#define NUM_LEG_COLUMNS  6
+#define LED_COUNT_LEG     40
+#define NUM_LEG_COLUMNS   6
 
-#define PIXELS_PER_INPUT  8
+#define PIXELS_PER_INPUT   8
 
 CRGB leds[NUM_LEDS];     // 定义一个数组存储 LED 的颜色信息
 uint32_t Purple = 0x6600ff;
 uint32_t Black = 0x000000;
 
+// leg LED animation
 CRGB legLeds[LED_COUNT_LEG * NUM_LEG_COLUMNS];
 uint32_t pixels[LED_COUNT_LEG];
 
@@ -45,9 +38,9 @@ const int gameTones[] = { NOTE_G3, NOTE_C4, NOTE_E4, NOTE_G5};
 byte gameSequence[MAX_GAME_LENGTH] = {0};
 byte gameIndex = 0;
 
-unsigned long lastGameActionTime = 0;
-const int gameActionDelay = 300; // Delay between game actions
-bool isGameOver = false;
+// by default, tasks run on Core 1
+// make 1 other task that will run on Core 2
+TaskHandle_t TaskLeds;
 
 /**
    Set up the Arduino board and initialize Serial communication
@@ -66,6 +59,15 @@ void setup() {
   // The following line primes the random number generator.
   // It assumes pin A0 is floating (disconnected):
   randomSeed(analogRead(26));
+
+  xTaskCreatePinnedToCore(
+      updateLegLeds,    /* Function to implement the task */
+      "TaskLeds",       /* Name of the task */
+      10000,            /* Stack size in words */
+      NULL,             /* Task input parameter */
+      0,                /* Priority of the task */
+      &TaskLeds,        /* Task handle. */
+      0);               /* Core where the task should run */
 }
 
 /**
@@ -153,108 +155,79 @@ bool checkUserSequence() {
   return true;
 }
 
-unsigned long lastLevelUpToneTime = 0;
-int currentLevelUpToneIndex = 0;
-bool isPlayingLevelUp = false;
-const int levelUpToneSequence[][2] = {
-    {NOTE_E4, 150},
-    {NOTE_G4, 150},
-    {NOTE_E5, 150},
-    {NOTE_C5, 150},
-    {NOTE_D5, 150},
-    {NOTE_G5, 150},
-    {0, 0} // End of sequence marker
-};
-
 /**
    Plays a hooray sound whenever the user finishes a level
 */
 void playLevelUpSound() {
-  isPlayingLevelUp = true;
-  currentLevelUpToneIndex = 0;
-  lastLevelUpToneTime = millis();
-}
-
-void updateLevelUpSound() {
-    if (!isPlayingLevelUp) return;
-
-    unsigned long now = millis();
-
-    // Check if it's time to move to the next tone
-    if (now - lastLevelUpToneTime >= levelUpToneSequence[currentLevelUpToneIndex][1]) {
-        lastLevelUpToneTime = now;
-        currentLevelUpToneIndex++;
-
-        if (levelUpToneSequence[currentLevelUpToneIndex][0] == 0) {
-            noTone(SPEAKER_PIN);
-            isPlayingLevelUp = false;
-        } else {
-            tone(SPEAKER_PIN, levelUpToneSequence[currentLevelUpToneIndex][0]);
-        }
-    }
+  tone(SPEAKER_PIN, NOTE_E4);
+  delay(150);
+  tone(SPEAKER_PIN, NOTE_G4);
+  delay(150);
+  tone(SPEAKER_PIN, NOTE_E5);
+  delay(150);
+  tone(SPEAKER_PIN, NOTE_C5);
+  delay(150);
+  tone(SPEAKER_PIN, NOTE_D5);
+  delay(150);
+  tone(SPEAKER_PIN, NOTE_G5);
+  delay(150);
+  noTone(SPEAKER_PIN);
 }
 
 /**
    The main game loop
 */
 void loop() {
-  // unsigned long now = millis();
-  // if (!isGameOver) {
-  //   if (now - lastGameActionTime >= gameActionDelay) {
-  //     lastGameActionTime = now;
-
-  //     // Add a random color to the sequence
-  //     gameSequence[gameIndex] = random(0, 4);
-  //     gameIndex++;
-  //     if (gameIndex >= MAX_GAME_LENGTH) {
-  //       gameIndex = MAX_GAME_LENGTH - 1;
-  //     }
-
-  //     playSequence();
-
-  //     if (!checkUserSequence()) {
-  //       gameOver();
-  //       isGameOver = true;
-  //     } else if (gameIndex > 0) {
-  //       playLevelUpSound(); // start the level-up sound sequence
-  //     }
-  //   }
-  // }
-
-  // updateLevelUpSound();
-  updateLegLed();
-}
-
-void updateLegLed() {
-  if (millis() >= timeout) {
-    Serial.println("ADD LEG PIXELS");
-    queue += PIXELS_PER_INPUT;
-    scheduleInputLeg();
+  // Add a random color to the end of the sequence
+  gameSequence[gameIndex] = random(0, 4);
+  gameIndex++;
+  if (gameIndex >= MAX_GAME_LENGTH) {
+    gameIndex = MAX_GAME_LENGTH - 1;
+  }
+  playSequence();
+  if (!checkUserSequence()) {
+    gameOver();
   }
 
-  if (millis() - lastTick >= 50) {
+  delay(300);
+
+  if (gameIndex > 0) {
+    playLevelUpSound();
+    delay(300);
+  }
+}
+
+void updateLegLeds(void* pvParameters) {
+  while(true) {
+    if (millis() >= timeout) {
+      Serial.println("ADD LEG PIXELS");
+      queue += PIXELS_PER_INPUT;
+      scheduleInputLeg();
+    }
+
+    delay(50); // controls speed of animation
+
     if (queue > 0) {
       queue--;
       unshift(pixels, LED_COUNT_LEG, Purple); // push purple pixel
     } else {
       unshift(pixels, LED_COUNT_LEG, Black); // push dark pixel
     }
-    lastTick = millis();
-  }
 
-  for(int i = 0; i < NUM_LEG_COLUMNS; i++) {
-    for(int j = 0; j < LED_COUNT_LEG; j++) {
-      uint32_t newColor;
-      if (i % 2 == 0) { // strips numbered top to bottom
-        newColor = pixels[j];
-      } else { // strips numbered bottom to top
-        newColor = pixels[LED_COUNT_LEG - j - 1];
+    for(int i = 0; i < NUM_LEG_COLUMNS; i++) {
+      for(int j = 0; j < LED_COUNT_LEG; j++) {
+        uint32_t newColor;
+        if (i % 2 == 0) { // strips numbered top to bottom
+          newColor = pixels[j];
+        } else { // strips numbered bottom to top
+          newColor = pixels[LED_COUNT_LEG - j - 1];
+        }
+        legLeds[i * LED_COUNT_LEG + j] = CRGB(newColor);
       }
-      legLeds[i * LED_COUNT_LEG + j] = CRGB(newColor);
     }
-  }
 
-  FastLED.show();    
+    FastLED.show();
+  }
 }
 
 void scheduleInputLeg() {
