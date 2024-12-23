@@ -13,11 +13,11 @@ Javascript code for the web-based prototype of the cassette's animations and sta
 - Only transmits data when a value has changed
 
 ## Simon
-Work in progress.
+Need to test.
 
-We have both the Simon game working and the input station leg LED animation working, but combining them is tricky. 
-The Simon code relies heavily on `delay`, which interrupts the timing of the LED animations. 
-Using a timer library is probably the best approach but still hard because we need many timed operations in sequence. Or a library that simulates multithreading on ESP32.
+- Uses ESP32's dual cores to schedule Simon game code on Core 0 and leg LED animations on Core 1
+- Simon game code taken from https://goodarduinocode.com/projects/simon
+- Leg LED animation code same as cassette legs
 
 ## Input Station Leg
 This folder has the input station leg LED animation code working in isolation, just for reference.
