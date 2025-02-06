@@ -3,9 +3,17 @@
 #include <FastLED.h>
 #include <math.h>
 
-#define LED_COUNT   150
-#define PIXEL_TRAIL_COUNT 20
-static uint32_t yellow = 0xffff00;
+#define LED_COUNT             150       // Number of LEDs in infinity loop
+#define PIXEL_TRAIL_COUNT     20        // Number of continuous LED pixels moving around the infinity loop
+#define PIXEL_TRAIL_ALPHA     0.2       // Controls how quickly LED pixel trail fades in brightness. Used in exponential fn below
+
+static uint32_t yellow = 0xffff00;  // LED pixel color used for infinity loop
+
+/**
+  This class represents the infinity loop on the cassette tape; the strip of LEDs going around the two spools.
+  It responds to state changes dispatched by the remote control.
+  The infinity loop is only on during "concert unlock" state, not while the spools are filling up in pre-concert.
+*/
 
 class Infinity {
   public:
@@ -47,7 +55,7 @@ class Infinity {
       }
     }
 
-    int getBrightness(int pixelIndex, float alpha = 0.2) {
+    int getBrightness(int pixelIndex, float alpha = PIXEL_TRAIL_ALPHA) {
       return (int)(255 * exp(-alpha * (PIXEL_TRAIL_COUNT - pixelIndex + 1)));
     }
 };

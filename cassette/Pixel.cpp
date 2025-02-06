@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <FastLED.h>
 
+// from cassette.ino
 extern uint32_t colors[];
 extern const size_t NUM_COLORS;
 

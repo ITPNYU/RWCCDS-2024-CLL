@@ -3,18 +3,25 @@
 #include "pitches.h"
 #include <FastLED.h>
 
-#define LED_PIN     27   // 数据引脚（建议使用 GPIO 26）
-#define NUM_LEDS    4    // LED 的数量
+#define LED_PIN                   27   // ESP32 pin for the Simon game LEDs
+#define NUM_LEDS                  4    // Number of Simon game LEDs
+#define SPEAKER_PIN               7    // ESP32 pin for the Simon speaker
 
-#define LED_PIN_LEG       33
-#define LED_COUNT_LEG     40
-#define NUM_LEG_COLUMNS   6
+#define LED_PIN_LEG               33   // ESP32 pin for the input station leg LED strips
+#define LED_COUNT_LEG             40   // Number of LEDs per 1 leg
+#define NUM_LEG_COLUMNS           6    // Number of continuous LED columns wrapped around the leg
+#define PIXELS_PER_INPUT          8    // Number of LED pixels that are emitted by one "input" down the leg
+#define LED_ANIMATION_SPEED_LEG   50   // millisecond delay between leg pixel animation steps. Smaller number = faster animation
 
-#define PIXELS_PER_INPUT   8
+#define LED_ANIMATION_INTERVAL_MIN  2000  // millisecond minimum delay between random "inputs" down the leg
+#define LED_ANIMATION_INTERVAL_MAX  5000  // millisecond maximum delay between random "inputs" down the leg
 
-CRGB leds[NUM_LEDS];     // 定义一个数组存储 LED 的颜色信息
-uint32_t Purple = 0x6600ff;
-uint32_t Black = 0x000000;
+#define MAX_GAME_LENGTH           100    // Max number of turns in a Simon game
+
+
+CRGB leds[NUM_LEDS];           // array of Simon game LEDs
+uint32_t Purple = 0x6600ff;    // Purple color, used for both Simon and leg LEDs
+uint32_t Black = 0x000000;     // Off color
 
 // leg LED animation
 CRGB legLeds[LED_COUNT_LEG * NUM_LEG_COLUMNS];
@@ -24,14 +31,9 @@ unsigned long interval, timeout;
 unsigned long lastTick;
 int queue = 0;
 
-/* Constants - define pin numbers for LEDs,
+/* Constants - define ESP32 pin numbers for LEDs,
    buttons and speaker, and also the game tones: */
-// const byte ledPins[] = {13,12,27,33};
 const int buttonPins[] = {25,4,19,21};
-#define SPEAKER_PIN 7
-
-#define MAX_GAME_LENGTH 100
-
 const int gameTones[] = { NOTE_G3, NOTE_C4, NOTE_E4, NOTE_G5};
 
 /* Global variables - store the game state */
@@ -39,7 +41,7 @@ byte gameSequence[MAX_GAME_LENGTH] = {0};
 byte gameIndex = 0;
 
 // by default, tasks run on Core 1
-// make 1 other task that will run on Core 2
+// make 1 other task that will run on Core 2 for the leg LEDs
 TaskHandle_t TaskLeds;
 
 /**
@@ -52,7 +54,6 @@ void setup() {
   FastLED.setBrightness(255);
 
   for ( byte i = 0; i < 4; i++) {
-    // pinMode(ledPins[i], OUTPUT);
     pinMode(buttonPins[i], INPUT_PULLUP);
   }
   pinMode(SPEAKER_PIN, OUTPUT);
@@ -205,7 +206,7 @@ void updateLegLeds(void* pvParameters) {
       scheduleInputLeg();
     }
 
-    delay(50); // controls speed of animation
+    delay(LED_ANIMATION_SPEED_LEG); // controls speed of animation
 
     if (queue > 0) {
       queue--;
@@ -231,7 +232,7 @@ void updateLegLeds(void* pvParameters) {
 }
 
 void scheduleInputLeg() {
-  interval = random(2000, 5000);
+  interval = random(LED_ANIMATION_INTERVAL_MIN, LED_ANIMATION_INTERVAL_MAX);
   timeout = millis() + interval;
 }
 

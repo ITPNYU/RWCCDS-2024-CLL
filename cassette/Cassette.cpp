@@ -4,12 +4,21 @@
 #include "Spool.cpp"
 #include "Infinity.cpp"
 
-// 240 for spiral + 80 * 6 for leg
-#define SPOOL_LED_COUNT   720
-#define INFINITY_LED_COUNT 150
-#define OUTLINE_LED_COUNT 190
+// These are also defined in cassette.ino but I don't know how to import them here, so redefining.
+// These need to stay in sync across all files though
 
+#define SPOOL_LED_COUNT     720     // Number of LEDs in one spool/spiral, including leg. 240 for spiral + 80 * 6 for leg
+#define INFINITY_LED_COUNT  150     // Number of LEDs in infinity loop
+#define OUTLINE_LED_COUNT   190     // Number of LEDs in border outline
+
+// pixel colors array defined in cassette.ino
 extern uint32_t colors[];
+
+/**
+  This class manages all state for the all of the LED strips. 
+  It dispatches changes to sub-objects (Infinity and Spools), which directly control the LED pixels.
+  It ticks each sub-object, draws them, and dispatches state changes.
+*/
 
 class Cassette {
   public:

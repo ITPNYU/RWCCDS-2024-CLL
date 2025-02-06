@@ -4,11 +4,15 @@
 #include <math.h>
 #include "Pixel.cpp"
 
-#define PIXEL_COLOR_PER_INPUT   2
-#define LED_COUNT               240
-#define LEG_LED_COUNT           80
-#define LEG_LED_COLUMNS         6
+#define PIXEL_COLOR_PER_INPUT   2       // Number of duplicates of each color pixel in leg LED inputs. Can be changed. Ex: 2 means white white, pink pink, purple purple.
+#define SPOOL_ROTATE_DEGREES    5       // Number of degrees spool should rotate in one frame during concert phase. Bigger number = faster rotation.
 
+#define LED_COUNT               240     // Number of LED pixels on one spool/spiral. Keep in sync with cassette.ino. Physically constant.
+#define LEG_LED_COUNT           80      // Number of LED pixels in one COLUMN of cassette leg. Keep in sync with cassette.ino. Physically constant.
+#define LEG_LED_COLUMNS         6       // Number of columns of LEDs on one cassette leg. Keep in sync with cassette.ino. Physically constant.
+
+
+// all defined in cassette.ino
 extern uint32_t colors[];
 extern int rings[5][2];
 extern const size_t NUM_COLORS;
@@ -16,12 +20,23 @@ extern const int INPUTS_PER_RING;
 
 const int TOTAL_LEDS = LED_COUNT + LEG_LED_COUNT * LEG_LED_COLUMNS;
 
+/**
+  This class represents one spool/spiral on the cassette tape. 
+  These are the LED strips laid out in a spiral shape.
+  The spool LEDs are directly connected to the cassette's leg LEDs, 
+  so from the code's perspective the leg is part of this Spool.
+
+  Here there be dragons, you probably don't want to mess with this math.
+*/
+
 class Spool {
   public:
     Pixel pixels[LED_COUNT + LEG_LED_COUNT];
     uint8_t pixelColors[LED_COUNT + LEG_LED_COUNT];
     CRGB (&leds)[TOTAL_LEDS];
 
+
+    // inline comment these
     String state;
     int pixelsCounter;
     int pixelsPerCircle;
@@ -182,7 +197,7 @@ class Spool {
     }
 
     void rotate() {
-      this->rotateAngle += 5;
+      this->rotateAngle += SPOOL_ROTATE_DEGREES;
       if (this->rotateAngle >= 360) {
         this->rotateAngle = 0; 
       }

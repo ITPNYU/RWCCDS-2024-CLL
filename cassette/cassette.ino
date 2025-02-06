@@ -7,23 +7,23 @@
 #include <WiFi.h>
 #include "Cassette.cpp"
 
-#define LED_PIN_LEFT_SPOOL      32
-#define LED_PIN_RIGHT_SPOOL     15
-#define LED_PIN_INFINITY        27
-#define LED_PIN_OUTLINE         33
+#define LED_PIN_LEFT_SPOOL      32    // ESP32 pin for left spool/spiral LEDs on cassette
+#define LED_PIN_RIGHT_SPOOL     15    // ESP32 pin for right spool/spiral LEDs on cassette
+#define LED_PIN_INFINITY        27    // ESP32 pin for infinity loop LEDs around spirals on cassette
+#define LED_PIN_OUTLINE         33    // ESP32 pin for LED outlined border on cassette
 
-#define SPOOL_LED_COUNT         240
-#define INFINITY_LED_COUNT      150
-#define LEG_LED_COUNT           80
-#define LEG_LED_COLUMNS         6
-#define OUTLINE_LED_COUNT       190
+// these are redefined in other files because I'm bad at C++.
+// !!! the values need to stay in sync across all files
+#define SPOOL_LED_COUNT         240   // Number of LED pixels on one spool/spiral
+#define INFINITY_LED_COUNT      150   // Number of LED pixels in the infinity loop
+#define LEG_LED_COUNT           80    // Number of LED pixels in one COLUMN of cassette leg
+#define LEG_LED_COLUMNS         6     // Number of columns of LEDs on one cassette leg
+#define OUTLINE_LED_COUNT       190   // Number of LED pixels in cassette outline
 
-// int buttonAddPin = 15;
-int buttonState = LOW;
-int lastButtonState = LOW;
+#define LED_ANIMATION_UPDATE    50    // milliseconds between LED animation updates. Smaller number = faster animation
 
 // LED strips
-CRGB spoolLeftLeds[SPOOL_LED_COUNT + LEG_LED_COUNT * LEG_LED_COLUMNS];
+CRGB spoolLeftLeds[SPOOL_LED_COUNT + LEG_LED_COUNT * LEG_LED_COLUMNS];    // spool and leg LED strips are connected, one continuous line of LEDs
 CRGB spoolRightLeds[SPOOL_LED_COUNT + LEG_LED_COUNT * LEG_LED_COLUMNS];
 CRGB infinityLeds[INFINITY_LED_COUNT];
 CRGB outlineLeds[OUTLINE_LED_COUNT];
@@ -31,17 +31,24 @@ CRGB outlineLeds[OUTLINE_LED_COUNT];
 // Cassette model
 Cassette cassette(spoolLeftLeds, spoolRightLeds, infinityLeds, outlineLeds);
 
-// Incoming pixel colors;
+// LED pixel colors used in the cassette spools and legs
+// The order of these colors within the array matters!
+// Index 0 is saved for black/off
+// Index 1 is the final purple color after the LEDs spiral in
+// The rest are several colors up from the legs, spiraling into the cassette spools
 uint32_t colors[] = {
     0x000000, // off
     0x6600ff, // final purple color
-    0x5f03ff, 
-    0xb700ff,
-    0xff00bb,
-    0xFFA9FF
+    0x5f03ff, // purple
+    0xb700ff, // magenta
+    0xff00bb, // hot pink
+    0xFFA9FF, // light pink/white
 };
 const size_t NUM_COLORS = sizeof(colors) / sizeof(colors[0]); 
 
+// Defines which LED pixels belong to which ring/layer of the cassette spools
+// Rings fill up one by one, starting from Ring 0 which is the smallest, innermost ring
+// These numbers need to be tweaked by visual trial and error to see where the ring boundaries fall best
 int rings[5][2] = {
   {0, 36},
   {36, 81},
@@ -50,13 +57,14 @@ int rings[5][2] = {
   {191, SPOOL_LED_COUNT - 20},
 };
 
+// used for timing random input bursts up each cassette leg
 unsigned long intervalLeft, intervalRight, timeoutLeft, timeoutRight;
 unsigned long lastTick;
 
-const int INPUT_INTERVAL_MIN = 10000; // 10s
-const int INPUT_INTERVAL_MAX = 20000; // 20s
+const int INPUT_INTERVAL_MIN = 10000; // millisecond minimum interval between random leg inputs
+const int INPUT_INTERVAL_MAX = 20000; // millisecond maximum interval between random leg inputs
 
-const int NUM_RINGS = 5; // physically constant LED layout
+const int NUM_RINGS = 5; // physically constant LED layout, see above about rings/layers
 const int PRECONCERT_DURATION_MINUTES = 45;
 const int INPUT_INTERVAL_AVG_MS = (INPUT_INTERVAL_MAX + INPUT_INTERVAL_MIN) / 2000;
 
@@ -65,6 +73,7 @@ const int INPUT_INTERVAL_AVG_MS = (INPUT_INTERVAL_MAX + INPUT_INTERVAL_MIN) / 20
 // 45min / 5 rings / 15 seconds = x inputs (36 in this example)
 const int INPUTS_PER_RING = PRECONCERT_DURATION_MINUTES * 60 / INPUT_INTERVAL_AVG_MS / NUM_RINGS;
 
+// Structure of data received from remote when any remote setting is updated
 typedef struct struct_message {
   bool on;
   bool playing;
@@ -100,6 +109,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
 void setup() {
   Serial.begin(115200);
 
+  // Important! Initialize all LED strips to correct ESP32 pins and array lengths
   FastLED.addLeds<WS2812, LED_PIN_LEFT_SPOOL, GRB>(spoolLeftLeds, SPOOL_LED_COUNT + LEG_LED_COUNT * LEG_LED_COLUMNS);
   FastLED.addLeds<WS2812, LED_PIN_RIGHT_SPOOL, GRB>(spoolRightLeds, SPOOL_LED_COUNT + LEG_LED_COUNT * LEG_LED_COLUMNS);
   FastLED.addLeds<WS2812, LED_PIN_INFINITY, GRB>(infinityLeds, INFINITY_LED_COUNT);
@@ -125,7 +135,9 @@ void setup() {
 }
 
 void loop() {
-  if (messageReceived) {
+  if (messageReceived) { // any message from the remote controller?
+
+    // handle remote control ON/OFF button states
     if (previousData.on != receivedData.on) {
       if (receivedData.on) { // off -> on
         Serial.println("State ON");
@@ -139,6 +151,7 @@ void loop() {
       }
     }
 
+    // handle remote control CONCERT UNLOCK state
     if (previousData.unlocked != receivedData.unlocked) {
       if(receivedData.unlocked) { // filling up -> unlocked
         Serial.println("State UNLOCK");
@@ -149,6 +162,7 @@ void loop() {
       }
     }
 
+    // handle remote control PLAY/PAUSE state
     if (previousData.playing != receivedData.playing) {
       if(receivedData.playing) { // paused -> playing
         Serial.println("State PLAY");
@@ -157,6 +171,8 @@ void loop() {
       }
     }
 
+    // handle remote control cassette spool fill percentage
+    // hard control over percentage of the spool LEDs that are on
     if (previousData.rate != receivedData.rate) {
       cassette.setPercentFill(receivedData.rate);
     }
@@ -180,13 +196,15 @@ void loop() {
     scheduleInputRight();
   }
 
-  // TODO speed controller?
-  if (millis() - lastTick >= 50) {
-    cassette.tick();
+  if (millis() - lastTick >= LED_ANIMATION_UPDATE) {
+    cassette.tick(); // !!! important! updates our managed LED state
     lastTick = millis();
   }
 
-  cassette.draw();
+  // !!! important! applies managed LED state to LED strips
+  cassette.draw(); 
+
+  // !!! important! makes LED updates actually visible
   FastLED.show();
 }
 
